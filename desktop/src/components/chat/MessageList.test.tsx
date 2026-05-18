@@ -1134,6 +1134,60 @@ describe('MessageList nested tool calls', () => {
     expect(within(dialog).queryByText(/raw structured JSON should not be shown/)).toBeNull()
   })
 
+  it('formats structured agent fallback results as readable markdown', () => {
+    useChatStore.setState({
+      sessions: {
+        [ACTIVE_TAB]: makeSessionState({
+          messages: [
+            {
+              id: 'tool-agent',
+              type: 'tool_use',
+              toolName: 'Agent',
+              toolUseId: 'agent-1',
+              input: { description: '审查安全风险' },
+              timestamp: 1,
+            },
+            {
+              id: 'result-agent',
+              type: 'tool_result',
+              toolUseId: 'agent-1',
+              content: {
+                results: [
+                  {
+                    file: 'git:v0.2.6..v0.2.7',
+                    line: 0,
+                    snippet: 'v0.2.7 tag = a4c92ec7',
+                    context: '版本范围判断：release-notes/v0.2.7.md 明确相比 v0.2.6。',
+                  },
+                  {
+                    file: '/tmp/example/src/lib.rs',
+                    line: 220,
+                    context: '中风险：服务默认监听 0.0.0.0。',
+                  },
+                ],
+              },
+              isError: false,
+              timestamp: 2,
+            },
+          ],
+        }),
+      },
+    })
+
+    render(<MessageList />)
+
+    expect(screen.getByText(/git:v0\.2\.6\.\.v0\.2\.7:0/)).toBeTruthy()
+    expect(screen.queryByText(/\{"results"/)).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'View result' }))
+
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByText('git:v0.2.6..v0.2.7:0')).toBeTruthy()
+    expect(within(dialog).getByText('/tmp/example/src/lib.rs:220')).toBeTruthy()
+    expect(within(dialog).getByText(/服务默认监听 0\.0\.0\.0/)).toBeTruthy()
+    expect(within(dialog).queryByText(/\{"results"/)).toBeNull()
+  })
+
   it('renders copy controls for user messages and scopes assistant copy to a single reply', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.assign(navigator, {

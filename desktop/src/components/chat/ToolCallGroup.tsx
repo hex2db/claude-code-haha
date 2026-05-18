@@ -877,7 +877,72 @@ function getAgentOutputSummary(content: string): string {
 }
 
 function extractAgentDisplayText(content: unknown): string {
-  return stripAgentResultMetadata(extractTextContent(content))
+  return stripAgentResultMetadata(formatAgentStructuredResult(content) || extractTextContent(content))
+}
+
+function formatAgentStructuredResult(content: unknown): string {
+  const structured = parseStructuredAgentContent(content)
+  if (!structured || Array.isArray(structured)) return ''
+
+  const results = structured.results
+  if (!Array.isArray(results) || results.length === 0) return ''
+
+  const items = results
+    .map((result, index) => formatAgentStructuredResultItem(result, index))
+    .filter(Boolean)
+
+  return items.join('\n')
+}
+
+function parseStructuredAgentContent(content: unknown): Record<string, unknown> | unknown[] | null {
+  if (typeof content === 'string') {
+    const trimmed = content.trim()
+    if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return null
+    try {
+      const parsed = JSON.parse(trimmed) as unknown
+      return typeof parsed === 'object' && parsed !== null ? parsed as Record<string, unknown> | unknown[] : null
+    } catch {
+      return null
+    }
+  }
+
+  return typeof content === 'object' && content !== null ? content as Record<string, unknown> | unknown[] : null
+}
+
+function formatAgentStructuredResultItem(result: unknown, index: number): string {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) {
+    const text = extractTextContent(result).trim()
+    return text ? `${index + 1}. ${text}` : ''
+  }
+
+  const record = result as Record<string, unknown>
+  const location = formatAgentResultLocation(record)
+  const context = getStringField(record, 'context')
+  const snippet = getStringField(record, 'snippet')
+  const message = getStringField(record, 'message') || getStringField(record, 'text') || getStringField(record, 'summary')
+  const lines = [`${index + 1}. ${location ? formatInlineCode(location) : 'Result'}`]
+
+  if (message) lines.push(`   - ${message}`)
+  if (context) lines.push(`   - ${context}`)
+  if (snippet) lines.push(`   - ${snippet}`)
+
+  return lines.join('\n')
+}
+
+function formatAgentResultLocation(record: Record<string, unknown>): string {
+  const file = getStringField(record, 'file')
+  if (!file) return ''
+  const line = typeof record.line === 'number' ? record.line : null
+  return line !== null ? `${file}:${line}` : file
+}
+
+function getStringField(record: Record<string, unknown>, key: string): string {
+  const value = record[key]
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function formatInlineCode(value: string): string {
+  return `\`${value.replace(/`/g, '\\`')}\``
 }
 
 function stripAgentResultMetadata(text: string): string {
