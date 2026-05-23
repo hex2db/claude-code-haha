@@ -651,6 +651,8 @@ function ToolCallTree({
         input={toolCall.input}
         result={result ? { content: result.content, isError: result.isError } : null}
         compact={compact}
+        isPending={toolCall.isPending}
+        partialInput={toolCall.partialInput}
       />
       {childToolCalls.length > 0 && (
         <div className={compact ? 'ml-4 border-l border-[var(--color-border)]/60 pl-3' : 'mb-2 ml-16 border-l border-[var(--color-border)]/60 pl-3'}>
@@ -686,6 +688,7 @@ function getMemoryToolActivity(
   let sawSave = false
 
   for (const toolCall of toolCalls) {
+    if (toolCall.isPending) continue
     const path = getToolFilePath(toolCall.input)
     if (!path || !isMemoryMarkdownPath(path)) continue
 
@@ -714,6 +717,7 @@ function getMemoryToolActivity(
 }
 
 function isMemoryToolCall(toolCall: ToolCall): boolean {
+  if (toolCall.isPending) return false
   const path = getToolFilePath(toolCall.input)
   if (!path || !isMemoryMarkdownPath(path)) return false
   return toolCall.toolName === 'Read' || isMemoryWriteTool(toolCall.toolName)

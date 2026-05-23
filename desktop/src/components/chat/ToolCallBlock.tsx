@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { LoaderCircle } from 'lucide-react'
 import { CodeViewer } from './CodeViewer'
 import { DiffViewer } from './DiffViewer'
 import { TerminalChrome } from './TerminalChrome'
@@ -14,6 +15,8 @@ type Props = {
   result?: { content: unknown; isError: boolean } | null
   agentTaskNotification?: AgentTaskNotification
   compact?: boolean
+  isPending?: boolean
+  partialInput?: string
 }
 
 const TOOL_ICONS: Record<string, string> = {
@@ -30,7 +33,7 @@ const TOOL_ICONS: Record<string, string> = {
   Skill: 'auto_awesome',
 }
 
-export function ToolCallBlock({ toolName, input, result, compact = false }: Props) {
+export function ToolCallBlock({ toolName, input, result, compact = false, isPending = false, partialInput }: Props) {
   const [expanded, setExpanded] = useState(false)
   const t = useTranslation()
   const obj = input && typeof input === 'object' ? (input as Record<string, unknown>) : {}
@@ -43,11 +46,16 @@ export function ToolCallBlock({ toolName, input, result, compact = false }: Prop
     result?.isError ?? false,
     t,
   )
+  const pendingSummary = isPending && !result
+    ? getPendingSummary(toolName, t)
+    : ''
 
   const preview = useMemo(() => renderPreview(toolName, obj, result, t), [obj, result, toolName, t])
-  const details = useMemo(() => renderDetails(toolName, obj, t), [obj, toolName, t])
+  const details = useMemo(() => renderDetails(toolName, obj, t, isPending ? partialInput : undefined), [isPending, obj, partialInput, toolName, t])
   const hasResultDetails = Boolean(result && extractTextContent(result.content))
-  const expandable = toolName === 'Edit' || toolName === 'Write' || hasResultDetails
+  const hasEditPreview = toolName === 'Edit' && typeof obj.old_string === 'string' && typeof obj.new_string === 'string'
+  const hasWritePreview = toolName === 'Write' && typeof obj.content === 'string'
+  const expandable = hasEditPreview || hasWritePreview || hasResultDetails || Boolean(isPending && partialInput)
 
   return (
     <div className={`overflow-hidden rounded-lg border border-[var(--color-border)]/50 bg-[var(--color-surface-container-lowest)] ${
@@ -77,7 +85,12 @@ export function ToolCallBlock({ toolName, input, result, compact = false }: Prop
         ) : (
           <span className="flex-1" />
         )}
-        {result && outputSummary && (
+        {pendingSummary ? (
+          <span className="inline-flex shrink-0 items-center gap-1 text-[10px] text-[var(--color-outline)]">
+            <LoaderCircle size={12} strokeWidth={2.4} className="animate-spin" aria-hidden="true" />
+            {pendingSummary}
+          </span>
+        ) : result && outputSummary ? (
           <span
             className={`shrink-0 text-[10px] ${
               result.isError
@@ -87,7 +100,7 @@ export function ToolCallBlock({ toolName, input, result, compact = false }: Prop
           >
             {outputSummary}
           </span>
-        )}
+        ) : null}
         {result?.isError && (
           <span className="material-symbols-outlined shrink-0 text-[14px] text-[var(--color-error)]">error</span>
         )}
@@ -166,7 +179,16 @@ function renderPreview(
   return null
 }
 
-function renderDetails(toolName: string, obj: Record<string, unknown>, t?: (key: TranslationKey, params?: Record<string, string | number>) => string) {
+function renderDetails(
+  toolName: string,
+  obj: Record<string, unknown>,
+  t?: (key: TranslationKey, params?: Record<string, string | number>) => string,
+  partialInput?: string,
+) {
+  if (partialInput) {
+    return renderPartialInput(partialInput, t)
+  }
+
   if (toolName === 'Edit' || toolName === 'Write') {
     return null
   }
@@ -184,6 +206,29 @@ function renderDetails(toolName: string, obj: Record<string, unknown>, t?: (key:
       <CodeViewer code={text} language="json" maxLines={18} />
     </div>
   )
+}
+
+function renderPartialInput(
+  partialInput: string,
+  t?: (key: TranslationKey, params?: Record<string, string | number>) => string,
+) {
+  return (
+    <div className="overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]">
+      <div className="border-b border-[var(--color-border)] px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-[var(--color-outline)]">
+        {t?.('tool.partialInput') ?? 'Partial input'}
+      </div>
+      <CodeViewer code={partialInput} language="json" maxLines={8} />
+    </div>
+  )
+}
+
+function getPendingSummary(
+  toolName: string,
+  t?: (key: TranslationKey, params?: Record<string, string | number>) => string,
+): string {
+  if (toolName === 'Write') return t?.('tool.generatingContent') ?? 'Generating content'
+  if (toolName === 'Edit' || toolName === 'MultiEdit') return t?.('tool.preparingEdit') ?? 'Preparing edit'
+  return t?.('tool.preparingTool') ?? 'Preparing tool'
 }
 
 function getToolResultSummary(

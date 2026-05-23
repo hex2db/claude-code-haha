@@ -1331,6 +1331,72 @@ describe('chatStore history mapping', () => {
     ])
   })
 
+  it('renders a pending tool call as soon as the tool stream starts', () => {
+    useChatStore.setState({
+      sessions: {
+        [TEST_SESSION_ID]: makeSession(),
+      },
+    })
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'content_start',
+      blockType: 'tool_use',
+      toolName: 'Write',
+      toolUseId: 'write-1',
+    })
+
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.messages).toMatchObject([
+      {
+        type: 'tool_use',
+        toolName: 'Write',
+        toolUseId: 'write-1',
+        input: {},
+        isPending: true,
+      },
+    ])
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'content_delta',
+      toolInput: '{"file_path":"/private/tmp/ai-code-novel.md","content":"第一章',
+    })
+
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.messages).toMatchObject([
+      {
+        type: 'tool_use',
+        toolName: 'Write',
+        toolUseId: 'write-1',
+        input: { file_path: '/private/tmp/ai-code-novel.md' },
+        isPending: true,
+        partialInput: '{"file_path":"/private/tmp/ai-code-novel.md","content":"第一章',
+      },
+    ])
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'tool_use_complete',
+      toolName: 'Write',
+      toolUseId: 'write-1',
+      input: {
+        file_path: '/private/tmp/ai-code-novel.md',
+        content: '第一章\n正文',
+      },
+    })
+
+    const messages = useChatStore.getState().sessions[TEST_SESSION_ID]?.messages ?? []
+    const toolMessages = messages.filter((message) => message.type === 'tool_use')
+    expect(toolMessages).toHaveLength(1)
+    expect(toolMessages[0]).toMatchObject({
+      type: 'tool_use',
+      toolName: 'Write',
+      toolUseId: 'write-1',
+      input: {
+        file_path: '/private/tmp/ai-code-novel.md',
+        content: '第一章\n正文',
+      },
+      isPending: false,
+    })
+    expect(toolMessages[0]).not.toHaveProperty('partialInput')
+  })
+
   it('refreshes merged slash commands when a live CLI update omits project commands', async () => {
     const cliCommand = { name: 'builtin-help', description: 'Built-in command' }
     const projectCommand = { name: 'project-probe', description: 'Project custom command' }

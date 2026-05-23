@@ -64,6 +64,21 @@ describe('chat blocks', () => {
     expect(container.textContent).not.toContain('file-a')
   })
 
+  it('shows pending Write tool calls while input is still streaming', () => {
+    const { container } = render(
+      <ToolCallBlock
+        toolName="Write"
+        input={{ file_path: '/private/tmp/ai-code-novel.md' }}
+        isPending
+        partialInput={'{"file_path":"/private/tmp/ai-code-novel.md","content":"第一章'}
+      />,
+    )
+
+    expect(container.textContent).toContain('Write')
+    expect(container.textContent).toContain('ai-code-novel.md')
+    expect(container.textContent).toContain('Generating content')
+  })
+
   it('shows a collapsed error summary for failed bash commands', () => {
     const { container } = render(
       <ToolCallBlock

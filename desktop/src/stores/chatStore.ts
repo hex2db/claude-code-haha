@@ -209,6 +209,81 @@ const COMPACT_SUMMARY_CUTOFFS = [
 let msgCounter = 0
 const nextId = () => `msg-${++msgCounter}-${Date.now()}`
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function readJsonStringLiteral(source: string, quoteIndex: number): string | undefined {
+  if (source[quoteIndex] !== '"') return undefined
+  let value = ''
+  for (let index = quoteIndex + 1; index < source.length; index += 1) {
+    const char = source[index]
+    if (char === '\\') {
+      const escaped = source[index + 1]
+      if (escaped === undefined) return undefined
+      value += char + escaped
+      index += 1
+      continue
+    }
+    if (char === '"') {
+      try {
+        return JSON.parse(`"${value}"`) as string
+      } catch {
+        return value
+      }
+    }
+    value += char
+  }
+  return undefined
+}
+
+function extractPartialJsonStringField(source: string, field: string): string | undefined {
+  const key = `"${field}"`
+  const keyIndex = source.indexOf(key)
+  if (keyIndex < 0) return undefined
+  const colonIndex = source.indexOf(':', keyIndex + key.length)
+  if (colonIndex < 0) return undefined
+
+  let valueIndex = colonIndex + 1
+  while (valueIndex < source.length && /\s/.test(source[valueIndex] ?? '')) {
+    valueIndex += 1
+  }
+  return readJsonStringLiteral(source, valueIndex)
+}
+
+function buildPartialToolInputPreview(
+  partialInput: string,
+  previousInput: unknown,
+): Record<string, unknown> {
+  const previous = isRecord(previousInput) ? previousInput : {}
+  const preview: Record<string, unknown> = { ...previous }
+  for (const field of ['file_path', 'filePath', 'path', 'command', 'pattern', 'url', 'query', 'description']) {
+    const value = extractPartialJsonStringField(partialInput, field)
+    if (value !== undefined) {
+      preview[field] = value
+    }
+  }
+  return preview
+}
+
+function upsertToolUseMessage(
+  messages: UIMessage[],
+  toolUseId: string,
+  build: (existing?: ToolCall) => ToolCall,
+): UIMessage[] {
+  const existingIndex = messages.findIndex(
+    (message): message is ToolCall =>
+      message.type === 'tool_use' && message.toolUseId === toolUseId,
+  )
+  if (existingIndex < 0) {
+    return [...messages, build()]
+  }
+
+  const next = [...messages]
+  next[existingIndex] = build(messages[existingIndex] as ToolCall)
+  return next
+}
+
 // Streaming throttle for content_delta. Buffers must be per-session because
 // multiple desktop tabs can stream at the same time.
 const pendingDeltaBySession = new Map<string, string>()
@@ -1106,9 +1181,26 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           }))
         } else if (msg.blockType === 'tool_use') {
           rememberPendingToolParentUseId(sessionId, msg.toolUseId, msg.parentToolUseId)
-          update(() => ({
-            activeToolUseId: msg.toolUseId ?? null,
-            activeToolName: msg.toolName ?? null,
+          const toolUseId = msg.toolUseId ?? null
+          const toolName = msg.toolName ?? 'unknown'
+          update((s) => ({
+            ...(toolUseId
+              ? {
+                  messages: upsertToolUseMessage(s.messages, toolUseId, (existing) => ({
+                    id: existing?.id ?? nextId(),
+                    type: 'tool_use',
+                    toolName,
+                    toolUseId,
+                    input: existing?.input ?? {},
+                    timestamp: existing?.timestamp ?? Date.now(),
+                    parentToolUseId: msg.parentToolUseId ?? existing?.parentToolUseId,
+                    isPending: true,
+                    partialInput: existing?.partialInput ?? '',
+                  })),
+                }
+              : {}),
+            activeToolUseId: toolUseId,
+            activeToolName: toolName,
             streamingToolInput: '',
             chatState: 'tool_executing',
             activeThinkingId: null,
@@ -1154,7 +1246,33 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             flushTimerBySession.set(sessionId, timer)
           }
         }
-        if (msg.toolInput !== undefined) update((s) => ({ streamingToolInput: s.streamingToolInput + msg.toolInput }))
+        if (msg.toolInput !== undefined) {
+          update((s) => {
+            const partialInput = s.streamingToolInput + msg.toolInput
+            const activeToolUseId = s.activeToolUseId
+            return {
+              streamingToolInput: partialInput,
+              ...(activeToolUseId
+                ? {
+                    messages: upsertToolUseMessage(s.messages, activeToolUseId, (existing) => {
+                      const toolName = existing?.toolName ?? s.activeToolName ?? 'unknown'
+                      return {
+                        id: existing?.id ?? nextId(),
+                        type: 'tool_use',
+                        toolName,
+                        toolUseId: activeToolUseId,
+                        input: buildPartialToolInputPreview(partialInput, existing?.input),
+                        timestamp: existing?.timestamp ?? Date.now(),
+                        parentToolUseId: existing?.parentToolUseId ?? getPendingToolParentUseId(sessionId, activeToolUseId),
+                        isPending: true,
+                        partialInput,
+                      }
+                    }),
+                  }
+                : {}),
+            }
+          })
+        }
         break
 
       case 'thinking':
@@ -1186,11 +1304,23 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         const parentToolUseId = msg.parentToolUseId ?? getPendingToolParentUseId(sessionId, toolUseId)
         rememberPendingToolParentUseId(sessionId, toolUseId, parentToolUseId)
         update((s) => ({
-          messages: [...s.messages, {
-            id: nextId(), type: 'tool_use', toolName,
-            toolUseId,
-            input: msg.input, timestamp: Date.now(), parentToolUseId,
-          }],
+          messages: toolUseId
+            ? upsertToolUseMessage(s.messages, toolUseId, (existing) => ({
+                id: existing?.id ?? nextId(),
+                type: 'tool_use',
+                toolName,
+                toolUseId,
+                input: msg.input,
+                timestamp: existing?.timestamp ?? Date.now(),
+                parentToolUseId,
+                isPending: false,
+              }))
+            : [...s.messages, {
+                id: nextId(), type: 'tool_use', toolName,
+                toolUseId,
+                input: msg.input, timestamp: Date.now(), parentToolUseId,
+                isPending: false,
+              }],
           activeToolUseId: null, activeToolName: null, activeThinkingId: null, streamingToolInput: '',
         }))
         if (toolName === 'TodoWrite' && Array.isArray((msg.input as any)?.todos)) {

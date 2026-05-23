@@ -1371,7 +1371,7 @@ export const MessageBlock = memo(function MessageBlock({
     case 'thinking':
       return <ThinkingBlock content={message.content} isActive={message.id === activeThinkingId} />
     case 'tool_use':
-      if (message.toolName === 'AskUserQuestion') {
+      if (message.toolName === 'AskUserQuestion' && !message.isPending) {
         return (
           <AskUserQuestion
             sessionId={sessionId}
@@ -1386,6 +1386,8 @@ export const MessageBlock = memo(function MessageBlock({
           toolName={message.toolName}
           input={message.input}
           result={toolResult}
+          isPending={message.isPending}
+          partialInput={message.partialInput}
           agentTaskNotification={
             message.toolName === 'Agent'
               ? agentTaskNotifications[message.toolUseId]
