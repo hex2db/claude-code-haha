@@ -10,6 +10,7 @@ const { bridge } = vi.hoisted(() => ({
   bridge: { open: vi.fn(), navigate: vi.fn(), setBounds: vi.fn(), setVisible: vi.fn(), close: vi.fn() },
 }))
 vi.mock('../../lib/previewBridge', () => ({ previewBridge: bridge }))
+vi.mock('@tauri-apps/api/event', () => ({ listen: () => Promise.resolve(() => {}) }))
 
 import { BrowserSurface } from './BrowserSurface'
 import { useBrowserPanelStore } from '../../stores/browserPanelStore'

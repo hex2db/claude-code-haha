@@ -48,4 +48,13 @@ describe('browserPanelStore', () => {
     st.setPicker('s1', true)
     expect(useBrowserPanelStore.getState().bySession['s1']!.pickerActive).toBe(true)
   })
+
+  it('setNavigated updates url/title without growing history', () => {
+    const st = useBrowserPanelStore.getState()
+    st.open('s1', 'http://x/a')
+    st.setNavigated('s1', 'http://x/b', 'B')
+    const s = useBrowserPanelStore.getState().bySession['s1']!
+    expect(s.url).toBe('http://x/b')
+    expect(s.title).toBe('B')
+  })
 })

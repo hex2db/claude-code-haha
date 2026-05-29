@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef } from 'react'
 import { BrowserAddressBar } from './BrowserAddressBar'
 import { computeWebviewBounds } from './computeWebviewBounds'
 import { previewBridge } from '../../lib/previewBridge'
+import { subscribePreviewEvents } from '../../lib/previewEvents'
 import { useBrowserPanelStore } from '../../stores/browserPanelStore'
 
 export function BrowserSurface({ sessionId }: { sessionId: string }) {
@@ -30,6 +31,13 @@ export function BrowserSurface({ sessionId }: { sessionId: string }) {
     ro.observe(el)
     window.addEventListener('resize', reportBounds)
     return () => { ro.disconnect(); window.removeEventListener('resize', reportBounds) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId])
+
+  useEffect(() => {
+    let unsub: (() => void) | undefined
+    void subscribePreviewEvents(sessionId).then((u) => { unsub = u })
+    return () => { unsub?.() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId])
 

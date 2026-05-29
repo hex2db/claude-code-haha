@@ -3,6 +3,7 @@ import { create } from 'zustand'
 export type BrowserSessionState = {
   isOpen: boolean
   url: string
+  title: string
   history: string[]
   historyIndex: number
   loading: boolean
@@ -20,10 +21,12 @@ type BrowserPanelState = {
   setLoading: (sessionId: string, loading: boolean) => void
   setPicker: (sessionId: string, active: boolean) => void
   close: (sessionId: string) => void
+  setNavigated: (sessionId: string, url: string, title: string) => void
+  setReady: (sessionId: string) => void
 }
 
 const empty = (url: string): BrowserSessionState => ({
-  isOpen: true, url, history: [url], historyIndex: 0,
+  isOpen: true, url, title: '', history: [url], historyIndex: 0,
   loading: false, pickerActive: false, canGoBack: false, canGoForward: false,
 })
 
@@ -63,5 +66,13 @@ export const useBrowserPanelStore = create<BrowserPanelState>((set) => ({
   close: (sessionId) => set((st) => {
     const cur = st.bySession[sessionId]; if (!cur) return st
     return { bySession: { ...st.bySession, [sessionId]: { ...cur, isOpen: false, pickerActive: false } } }
+  }),
+  setNavigated: (sessionId, url, title) => set((st) => {
+    const cur = st.bySession[sessionId]; if (!cur) return st
+    return { bySession: { ...st.bySession, [sessionId]: { ...cur, url, title, loading: false } } }
+  }),
+  setReady: (sessionId) => set((st) => {
+    const cur = st.bySession[sessionId]; if (!cur) return st
+    return { bySession: { ...st.bySession, [sessionId]: { ...cur, loading: false } } }
   }),
 }))

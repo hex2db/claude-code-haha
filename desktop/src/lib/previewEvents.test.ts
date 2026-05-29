@@ -1,0 +1,18 @@
+import { describe, expect, it, vi } from 'vitest'
+
+const listeners: Record<string, (e: { payload: string }) => void> = {}
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: (name: string, cb: (e: { payload: string }) => void) => { listeners[name] = cb; return Promise.resolve(() => {}) },
+}))
+
+import { subscribePreviewEvents } from './previewEvents'
+import { useBrowserPanelStore } from '../stores/browserPanelStore'
+
+describe('subscribePreviewEvents', () => {
+  it('routes navigated event to the store', async () => {
+    useBrowserPanelStore.getState().open('s1', 'http://x/a')
+    await subscribePreviewEvents('s1')
+    listeners['preview://event']!({ payload: JSON.stringify({ v: 1, type: 'navigated', url: 'http://x/c', title: 'C' }) })
+    expect(useBrowserPanelStore.getState().bySession['s1']!.url).toBe('http://x/c')
+  })
+})
