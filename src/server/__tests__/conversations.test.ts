@@ -530,6 +530,84 @@ describe('ConversationService', () => {
     }
   })
 
+  it('should use active provider model context windows for transcript estimates', async () => {
+    const previousConfigDir = process.env.CLAUDE_CONFIG_DIR
+    const previousNodeEnv = process.env.NODE_ENV
+    const previousModelContextWindows = process.env.CLAUDE_CODE_MODEL_CONTEXT_WINDOWS
+    const tmpConfigDir = await fs.mkdtemp(path.join(os.tmpdir(), 'claude-transcript-provider-'))
+    const workDir = await fs.mkdtemp(path.join(os.tmpdir(), 'claude-workdir-provider-'))
+    process.env.CLAUDE_CONFIG_DIR = tmpConfigDir
+    process.env.NODE_ENV = 'development'
+    delete process.env.CLAUDE_CODE_MODEL_CONTEXT_WINDOWS
+
+    try {
+      const providerService = new ProviderService()
+      const provider = await providerService.addProvider({
+        presetId: 'minimax',
+        name: 'MiniMax',
+        apiKey: 'provider-key',
+        authStrategy: 'auth_token',
+        baseUrl: 'https://api.minimaxi.com/anthropic',
+        apiFormat: 'anthropic',
+        models: {
+          main: 'MiniMax-M3',
+          haiku: 'MiniMax-M3',
+          sonnet: 'MiniMax-M3',
+          opus: 'MiniMax-M3',
+        },
+        modelContextWindows: {
+          'MiniMax-M3': 1_000_000,
+        },
+      })
+      await providerService.activateProvider(provider.id)
+
+      const svc = new SessionService()
+      const { sessionId } = await svc.createSession(workDir)
+      const found = await svc.findSessionFile(sessionId)
+      expect(found).not.toBeNull()
+
+      await fs.appendFile(found!.filePath, JSON.stringify({
+        type: 'assistant',
+        uuid: crypto.randomUUID(),
+        timestamp: '2026-04-27T12:00:00.000Z',
+        cwd: workDir,
+        version: '999.0.0-test',
+        message: {
+          role: 'assistant',
+          model: 'MiniMax-M3',
+          content: [{ type: 'text', text: 'hello' }],
+          usage: {
+            input_tokens: 100,
+            output_tokens: 20,
+          },
+        },
+      }) + '\n')
+
+      const contextEstimate = await svc.getTranscriptContextEstimate(sessionId)
+
+      expect(contextEstimate?.model).toBe('MiniMax-M3')
+      expect(contextEstimate?.rawMaxTokens).toBe(1_000_000)
+    } finally {
+      if (previousConfigDir === undefined) {
+        delete process.env.CLAUDE_CONFIG_DIR
+      } else {
+        process.env.CLAUDE_CONFIG_DIR = previousConfigDir
+      }
+      if (previousNodeEnv === undefined) {
+        delete process.env.NODE_ENV
+      } else {
+        process.env.NODE_ENV = previousNodeEnv
+      }
+      if (previousModelContextWindows === undefined) {
+        delete process.env.CLAUDE_CODE_MODEL_CONTEXT_WINDOWS
+      } else {
+        process.env.CLAUDE_CODE_MODEL_CONTEXT_WINDOWS = previousModelContextWindows
+      }
+      await fs.rm(tmpConfigDir, { recursive: true, force: true })
+      await fs.rm(workDir, { recursive: true, force: true })
+    }
+  })
+
   it('should not report transcript context as full for low-trust media usage spikes', async () => {
     const previousConfigDir = process.env.CLAUDE_CONFIG_DIR
     const previousNodeEnv = process.env.NODE_ENV

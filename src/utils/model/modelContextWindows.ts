@@ -61,33 +61,25 @@ function normalizeWindow(value: unknown): number | undefined {
   return value
 }
 
-function parseConfiguredContextWindows(): Record<string, number> {
-  const raw = process.env[MODEL_CONTEXT_WINDOWS_ENV_KEY]
-  if (!raw?.trim()) {
+function normalizeConfiguredContextWindows(parsed: unknown): Record<string, number> {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     return {}
   }
 
-  try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return {}
+  const windows: Record<string, number> = {}
+  for (const [model, value] of Object.entries(parsed)) {
+    const normalized = normalizeWindow(value)
+    if (normalized !== undefined) {
+      windows[normalizeModelContextKey(model)] = normalized
     }
-
-    const windows: Record<string, number> = {}
-    for (const [model, value] of Object.entries(parsed)) {
-      const normalized = normalizeWindow(value)
-      if (normalized !== undefined) {
-        windows[normalizeModelContextKey(model)] = normalized
-      }
-    }
-    return windows
-  } catch {
-    return {}
   }
+  return windows
 }
 
-function getConfiguredModelContextWindow(model: string): number | undefined {
-  const configured = parseConfiguredContextWindows()
+function findConfiguredModelContextWindow(
+  model: string,
+  configured: Record<string, number>,
+): number | undefined {
   const normalizedModel = normalizeModelContextKey(model)
   const exact = configured[normalizedModel]
   if (exact !== undefined) {
@@ -103,6 +95,42 @@ function getConfiguredModelContextWindow(model: string): number | undefined {
     }
   }
   return undefined
+}
+
+export function getModelContextWindowFromEnvValue(
+  model: string,
+  raw: string | undefined,
+): number | undefined {
+  if (!raw?.trim()) {
+    return undefined
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    return findConfiguredModelContextWindow(
+      model,
+      normalizeConfiguredContextWindows(parsed),
+    )
+  } catch {
+    return undefined
+  }
+}
+
+function parseConfiguredContextWindows(): Record<string, number> {
+  const raw = process.env[MODEL_CONTEXT_WINDOWS_ENV_KEY]
+  if (!raw?.trim()) {
+    return {}
+  }
+
+  try {
+    return normalizeConfiguredContextWindows(JSON.parse(raw) as Record<string, unknown>)
+  } catch {
+    return {}
+  }
+}
+
+function getConfiguredModelContextWindow(model: string): number | undefined {
+  return findConfiguredModelContextWindow(model, parseConfiguredContextWindows())
 }
 
 function getBuiltInModelContextWindow(model: string): number | undefined {
