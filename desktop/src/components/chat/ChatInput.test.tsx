@@ -1101,4 +1101,54 @@ describe('ChatInput file mentions', () => {
 
     expect(input).toHaveValue('/agent debugger ')
   })
+
+  it('selects a highlighted agent entry from /agent without sending until the configured send shortcut is used', async () => {
+    useSettingsStore.setState({
+      chatSendBehavior: 'modifierEnter',
+    })
+    mocks.listAgents.mockResolvedValue({
+      activeAgents: [
+        {
+          agentType: 'debugger',
+          description: 'Debug failures',
+          modelDisplay: 'OPUS',
+          source: 'userSettings',
+          isActive: true,
+        },
+      ],
+      allAgents: [],
+    })
+
+    render(<ChatInput />)
+
+    await waitFor(() => {
+      expect(mocks.listAgents).toHaveBeenCalledWith('/repo')
+    })
+
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement
+    fireEvent.change(input, {
+      target: { value: '/agent', selectionStart: 6 },
+    })
+
+    await screen.findByText('/agent debugger')
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    expect(input).toHaveValue('/agent debugger ')
+    expect(mocks.wsSend).not.toHaveBeenCalled()
+
+    const prompt = '/agent debugger investigate this failure'
+    fireEvent.change(input, {
+      target: { value: prompt, selectionStart: prompt.length },
+    })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(mocks.wsSend).not.toHaveBeenCalled()
+
+    fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true })
+    expect(mocks.wsSend).toHaveBeenCalledWith(sessionId, {
+      type: 'user_message',
+      content: prompt,
+      attachments: [],
+    })
+  })
 })

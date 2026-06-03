@@ -415,9 +415,11 @@ export function EmptySession() {
         return
       }
       if (event.key === 'Enter' || event.key === 'Tab') {
+        const selected = filteredCommands[slashSelectedIndex]
         if (
           event.key === 'Enter' &&
           exactSlashCommand &&
+          selected?.name.toLowerCase() === exactSlashCommand.name.toLowerCase() &&
           slashFilter.trim().toLowerCase() === exactSlashCommand.name.toLowerCase() &&
           shouldSubmitOnEnter(event, chatSendBehavior)
         ) {
@@ -426,7 +428,6 @@ export function EmptySession() {
           return
         }
         event.preventDefault()
-        const selected = filteredCommands[slashSelectedIndex]
         if (selected) selectSlashCommand(selected.name)
         return
       }

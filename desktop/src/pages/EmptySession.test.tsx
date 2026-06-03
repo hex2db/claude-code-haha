@@ -353,6 +353,43 @@ describe('EmptySession', () => {
     expect(input).toHaveValue('/agent debugger ')
   })
 
+  it('selects a highlighted agent entry from /agent without creating a session', async () => {
+    useSettingsStore.setState({
+      chatSendBehavior: 'enter',
+    })
+    mocks.listAgents.mockResolvedValue({
+      activeAgents: [
+        {
+          agentType: 'debugger',
+          description: 'Debug failures',
+          modelDisplay: 'OPUS',
+          source: 'userSettings',
+          isActive: true,
+        },
+      ],
+      allAgents: [],
+    })
+
+    render(<EmptySession />)
+
+    await waitFor(() => {
+      expect(mocks.listAgents).toHaveBeenCalledWith(undefined)
+    })
+
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement
+    fireEvent.change(input, {
+      target: { value: '/agent', selectionStart: 6 },
+    })
+
+    await screen.findByText('/agent debugger')
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    expect(input).toHaveValue('/agent debugger ')
+    expect(mocks.createSession).not.toHaveBeenCalled()
+    expect(mocks.wsSend).not.toHaveBeenCalled()
+  })
+
   it('integrates repository launch controls into the desktop composer panel', async () => {
     render(<EmptySession />)
 

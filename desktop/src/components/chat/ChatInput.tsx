@@ -737,8 +737,10 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
         return
       }
       if (event.key === 'Enter') {
+        const selected = filteredCommands[slashSelectedIndex]
         if (
           exactSlashCommand &&
+          selected?.name.toLowerCase() === exactSlashCommand.name.toLowerCase() &&
           slashFilter.trim().toLowerCase() === exactSlashCommand.name.toLowerCase() &&
           shouldSubmitOnEnter(event, chatSendBehavior)
         ) {
@@ -747,7 +749,6 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
           return
         }
         event.preventDefault()
-        const selected = filteredCommands[slashSelectedIndex]
         if (selected) selectSlashCommand(selected.name)
         return
       }
