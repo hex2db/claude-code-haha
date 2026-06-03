@@ -64,10 +64,10 @@ export class ElectronServerRuntime {
     await this.startAdaptersSidecars(serverUrl)
   }
 
-  stopAll() {
-    this.stopAdaptersSidecars()
+  stopAll(sync = false) {
+    this.stopAdaptersSidecars(sync)
     if (this.server) {
-      killSidecar(this.server.child)
+      killSidecar(this.server.child, sync)
       this.server = null
     }
   }
@@ -125,9 +125,9 @@ export class ElectronServerRuntime {
     }
   }
 
-  private stopAdaptersSidecars() {
+  private stopAdaptersSidecars(sync = false) {
     for (const child of this.adapters.splice(0)) {
-      killSidecar(child)
+      killSidecar(child, sync)
     }
   }
 

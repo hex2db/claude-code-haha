@@ -389,5 +389,7 @@ app.on('before-quit', () => {
   trayController = null
   terminalService?.killAll()
   previewService?.close()
-  getServerRuntime().stopAll()
+  // Synchronous on quit so the Windows taskkill completes before the process
+  // exits, otherwise the fire-and-forget kill can leave orphaned sidecars.
+  getServerRuntime().stopAll(true)
 })

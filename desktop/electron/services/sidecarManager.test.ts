@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import path from 'node:path'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -7,11 +7,17 @@ import {
   createAdapterPlan,
   createServerPlan,
   httpToWebSocketUrl,
+  killSidecar,
   mergeProxyEnv,
   proxyUrlFromElectronProxyRules,
   pushStartupLog,
   resolveHostTriple,
+  type SidecarChild,
 } from './sidecarManager'
+
+function fakeChild(pid = 4321) {
+  return { pid, kill: vi.fn() } as unknown as SidecarChild & { kill: ReturnType<typeof vi.fn> }
+}
 
 describe('Electron sidecar manager', () => {
   it('maps host platform to existing sidecar target triples', () => {
@@ -112,5 +118,34 @@ describe('Electron sidecar manager', () => {
   it('maps http urls to adapter websocket urls', () => {
     expect(httpToWebSocketUrl('http://127.0.0.1:3456')).toBe('ws://127.0.0.1:3456')
     expect(httpToWebSocketUrl('https://example.com')).toBe('wss://example.com')
+  })
+
+  it('kills non-Windows sidecars with a signal', () => {
+    const child = fakeChild()
+    const spawnAsync = vi.fn()
+    const spawnSyncFn = vi.fn()
+    killSidecar(child, false, { platform: 'darwin', spawnAsync: spawnAsync as never, spawnSyncFn: spawnSyncFn as never })
+    expect(child.kill).toHaveBeenCalledTimes(1)
+    expect(spawnAsync).not.toHaveBeenCalled()
+    expect(spawnSyncFn).not.toHaveBeenCalled()
+  })
+
+  it('uses async taskkill on Windows by default', () => {
+    const child = fakeChild(777)
+    const spawnAsync = vi.fn()
+    const spawnSyncFn = vi.fn()
+    killSidecar(child, false, { platform: 'win32', spawnAsync: spawnAsync as never, spawnSyncFn: spawnSyncFn as never })
+    expect(spawnAsync).toHaveBeenCalledWith('taskkill', ['/F', '/T', '/PID', '777'], { stdio: 'ignore' })
+    expect(spawnSyncFn).not.toHaveBeenCalled()
+    expect(child.kill).not.toHaveBeenCalled()
+  })
+
+  it('uses synchronous taskkill on Windows during shutdown to avoid orphaned sidecars', () => {
+    const child = fakeChild(777)
+    const spawnAsync = vi.fn()
+    const spawnSyncFn = vi.fn()
+    killSidecar(child, true, { platform: 'win32', spawnAsync: spawnAsync as never, spawnSyncFn: spawnSyncFn as never })
+    expect(spawnSyncFn).toHaveBeenCalledWith('taskkill', ['/F', '/T', '/PID', '777'], { stdio: 'ignore' })
+    expect(spawnAsync).not.toHaveBeenCalled()
   })
 })

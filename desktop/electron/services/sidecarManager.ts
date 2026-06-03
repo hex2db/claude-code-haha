@@ -1,4 +1,4 @@
-import { spawn, type ChildProcessByStdio } from 'node:child_process'
+import { spawn, spawnSync, type ChildProcessByStdio } from 'node:child_process'
 import { mkdirSync, existsSync } from 'node:fs'
 import type { Readable } from 'node:stream'
 import net from 'node:net'
@@ -213,9 +213,24 @@ export function spawnSidecar(plan: SidecarPlan): SidecarChild {
   })
 }
 
-export function killSidecar(child: SidecarChild) {
-  if (process.platform === 'win32' && child.pid) {
-    spawn('taskkill', ['/F', '/T', '/PID', String(child.pid)], { stdio: 'ignore' })
+export type KillSidecarDeps = {
+  platform?: NodeJS.Platform
+  spawnAsync?: typeof spawn
+  spawnSyncFn?: typeof spawnSync
+}
+
+/**
+ * Terminate a sidecar process. On Windows we shell out to `taskkill /T` to also
+ * reap the child process tree (the Bun sidecar spawns workers). Pass `sync=true`
+ * during app shutdown so the kill completes before the process exits — otherwise
+ * the async `taskkill` is fire-and-forget and can leave orphaned processes.
+ */
+export function killSidecar(child: SidecarChild, sync = false, deps: KillSidecarDeps = {}) {
+  const platform = deps.platform ?? process.platform
+  if (platform === 'win32' && child.pid) {
+    const args = ['/F', '/T', '/PID', String(child.pid)]
+    if (sync) (deps.spawnSyncFn ?? spawnSync)('taskkill', args, { stdio: 'ignore' })
+    else (deps.spawnAsync ?? spawn)('taskkill', args, { stdio: 'ignore' })
     return
   }
   child.kill()
