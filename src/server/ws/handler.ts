@@ -1456,8 +1456,10 @@ export function translateCliMessage(cliMsg: any, sessionId: string): ServerMessa
               }
 
               // JSON parse failed — defer to the assistant message which
-              // carries the complete, already-parsed tool input.
-              console.warn(
+              // carries the complete, already-parsed tool input. This is the
+              // normal streaming partial-input case, not a fault: keep it at
+              // debug so it doesn't surface as a diagnostics warning.
+              console.debug(
                 `[WS] Tool input JSON parse failed for ${toolBlock.toolName} (${toolBlock.toolUseId}), deferring to assistant message`,
               )
               streamState.pendingToolBlocks.set(toolBlock.toolUseId, {
